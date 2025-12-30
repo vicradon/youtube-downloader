@@ -21,3 +21,5 @@ viddownloader
 
 .env
 app.env
+
+bin/*

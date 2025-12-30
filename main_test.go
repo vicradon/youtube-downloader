@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/vicradon/yt-downloader/services"
+	"github.com/vicradon/yt-downloader/utils"
 )
 
 func TestVideoConversion(t *testing.T) {
@@ -50,8 +53,8 @@ func TestVideoConversion(t *testing.T) {
 			// Use unique output filename per test to avoid conflicts
 			outputFile := filepath.Join(outputDir, tt.name+"."+tt.outputExt)
 
-			// Use the actual buildFFmpegCommand function from main.go
-			cmd := buildFFmpegCommand(testVideo, outputFile, tt.format)
+			// Use the buildFFmpegCommand function from utils package
+			cmd := utils.BuildFFmpegCommand(testVideo, outputFile, tt.format)
 
 			output, err := cmd.CombinedOutput()
 			if err != nil {
@@ -75,6 +78,9 @@ func TestVideoConversion(t *testing.T) {
 }
 
 func TestExtractVideoID(t *testing.T) {
+	// Create a YouTube service for testing
+	ytService := services.NewYouTubeService("test-key", "test-host")
+
 	tests := []struct {
 		name    string
 		url     string
@@ -109,19 +115,22 @@ func TestExtractVideoID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := extractVideoID(tt.url)
+			got, err := ytService.ExtractVideoID(tt.url)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("extractVideoID() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ExtractVideoID() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("extractVideoID() = %v, want %v", got, tt.want)
+				t.Errorf("ExtractVideoID() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 func TestFormatFileSize(t *testing.T) {
+	// Create a storage service for testing
+	storageService := services.NewStorageService("/tmp")
+
 	tests := []struct {
 		name  string
 		bytes int64
@@ -136,8 +145,8 @@ func TestFormatFileSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := formatFileSize(tt.bytes); got != tt.want {
-				t.Errorf("formatFileSize(%d) = %v, want %v", tt.bytes, got, tt.want)
+			if got := storageService.FormatFileSize(tt.bytes); got != tt.want {
+				t.Errorf("FormatFileSize(%d) = %v, want %v", tt.bytes, got, tt.want)
 			}
 		})
 	}

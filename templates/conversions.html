@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vid Downloader</title>
+    <title>Conversions - Vid Downloader</title>
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="light">
@@ -12,14 +12,14 @@
             <div class="header-left">
                 <h1>Vid Downloader</h1>
                 <nav class="nav">
-                    <a href="/" class="nav-btn active">
+                    <a href="/" class="nav-btn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                             <polyline points="9 22 9 12 15 12 15 22"/>
                         </svg>
                         Home
                     </a>
-                    <a href="/conversions" class="nav-btn">
+                    <a href="/conversions" class="nav-btn active">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                             <polyline points="7 10 12 15 17 10"/>
@@ -49,56 +49,15 @@
     </header>
 
     <main class="main-content">
-        <div class="home-container">
-            <div class="form-group">
-                <label for="videoUrl">video url</label>
-                <div class="input-group">
-                    <input type="text" id="videoUrl" placeholder="https://youtube.com/watch?v=...">
-                    <button class="obtain-btn" id="obtainBtn" onclick="handleObtain()">obtain</button>
-                </div>
-                <div id="errorMessage" class="error-message hidden"></div>
-            </div>
-
-            <div class="form-group">
-                <label>Action</label>
-                <div class="radio-group">
-                    <div class="radio-item">
-                        <input type="radio" id="directDownload" name="action" value="direct" checked>
-                        <label for="directDownload">Download Directly</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="convert" name="action" value="convert">
-                        <label for="convert">Convert</label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group" id="formatGroup" style="display: none;">
-                <label>Format</label>
-                <div class="radio-group format-group">
-                    <div class="radio-item">
-                        <input type="radio" id="formatMpg" name="format" value="mpg" checked>
-                        <label for="formatMpg">MPG</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="formatAvi" name="format" value="avi">
-                        <label for="formatAvi">AVI</label>
-                    </div>
-                </div>
-            </div>
-
-            <div id="directDownloadCard" class="direct-download-card hidden">
-                <div class="conversion-header">
-                    <div class="conversion-title">Download Ready</div>
-                </div>
-                <div class="conversion-actions">
-                    <a id="directDownloadLink" href="#" target="_blank" class="download-btn">Download Video</a>
-                </div>
+        <div class="conversions-container">
+            <h2>Conversions</h2>
+            <div id="conversionsList" class="conversions-list">
+                <p class="empty-state">No conversions yet</p>
             </div>
         </div>
     </main>
 
-    <script src="/static/home.js"></script>
+    <script src="/static/conversions.js"></script>
     <script src="/static/theme.js"></script>
 </body>
 </html>
