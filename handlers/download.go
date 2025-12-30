@@ -67,7 +67,12 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	videoTitle := rapidResp.Title
 	if videoTitle == "" {
-		videoTitle = videoID
+		if title, err := h.youtubeService.GetVideoTitle(videoID); err == nil {
+			videoTitle = title
+		} else {
+			log.Printf("Warning: could not fetch video title: %v", err)
+			videoTitle = videoID
+		}
 	}
 
 	jobID := fmt.Sprintf("%s_%d", videoID, time.Now().Unix())

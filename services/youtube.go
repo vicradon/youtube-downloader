@@ -86,3 +86,41 @@ func (s *YouTubeService) GetDownloadURL(videoID string) (*models.RapidAPIRespons
 func (s *YouTubeService) WaitForFileReady() {
 	time.Sleep(20 * time.Second)
 }
+
+func (s *YouTubeService) GetVideoTitle(videoID string) (string, error) {
+	oEmbedURL := fmt.Sprintf("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=%s&format=json", videoID)
+
+	req, err := http.NewRequest("GET", oEmbedURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("oembed API returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var oembedResp struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(body, &oembedResp); err != nil {
+		return "", err
+	}
+
+	if oembedResp.Title == "" {
+		return "", fmt.Errorf("no title found in oembed response")
+	}
+
+	return oembedResp.Title, nil
+}
