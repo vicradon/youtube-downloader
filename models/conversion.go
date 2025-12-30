@@ -16,6 +16,7 @@ type ConversionJob struct {
 	Error       *string
 	Progress    float64
 	DownloadURL string
+	VideoTitle  string     `gorm:"column:video_title"`
 	Mu          sync.Mutex `gorm:"-"`
 }
 
@@ -28,6 +29,7 @@ type RapidAPIResponse struct {
 	Comment      string `json:"comment"`
 	File         string `json:"file"`
 	ReservedFile string `json:"reserved_file"`
+	Title        string `json:"title"`
 }
 
 type DownloadRequest struct {

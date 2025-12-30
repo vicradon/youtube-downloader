@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,7 +54,7 @@ func (s *ConversionService) LoadFromDatabase() error {
 	return nil
 }
 
-func (s *ConversionService) CreateJob(jobID, url, format, downloadURL string) *models.ConversionJob {
+func (s *ConversionService) CreateJob(jobID, url, format, downloadURL, videoTitle string) *models.ConversionJob {
 	job := &models.ConversionJob{
 		ID:          jobID,
 		URL:         url,
@@ -61,6 +62,7 @@ func (s *ConversionService) CreateJob(jobID, url, format, downloadURL string) *m
 		Status:      "downloading",
 		StartTime:   time.Now(),
 		DownloadURL: downloadURL,
+		VideoTitle:  videoTitle,
 	}
 
 	s.mu.Lock()
@@ -82,24 +84,59 @@ func (s *ConversionService) GetJob(jobID string) (*models.ConversionJob, bool) {
 }
 
 func (s *ConversionService) GetAllJobs() []map[string]interface{} {
+	// Fetch fresh data from database
+	jobs, err := database.LoadConversions()
+	if err != nil {
+		log.Printf("Error loading conversions from database: %v", err)
+		// Fall back to in-memory data if DB fetch fails
+		return s.getJobsFromMemory()
+	}
+
+	// Update in-memory map with latest DB data
+	s.mu.Lock()
+	for _, job := range jobs {
+		jobCopy := job
+		if existing, exists := s.conversions[job.ID]; exists {
+			// Preserve the mutex from existing job
+			jobCopy.Mu = existing.Mu
+		}
+		s.conversions[job.ID] = &jobCopy
+	}
+	s.mu.Unlock()
+
+	// Now return the jobs
+	return s.buildJobResponse(jobs)
+}
+
+func (s *ConversionService) getJobsFromMemory() []map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Collect all jobs first
 	jobsList := make([]*models.ConversionJob, 0, len(s.conversions))
 	for _, job := range s.conversions {
 		jobsList = append(jobsList, job)
 	}
 
-	// Sort by start time (newest first)
 	sort.Slice(jobsList, func(i, j int) bool {
 		return jobsList[i].StartTime.After(jobsList[j].StartTime)
 	})
 
-	// Build response
-	jobs := make([]map[string]interface{}, 0, len(jobsList))
-	for _, job := range jobsList {
-		job.Mu.Lock()
+	jobs := make([]models.ConversionJob, len(jobsList))
+	for i, job := range jobsList {
+		jobs[i] = *job
+	}
+
+	return s.buildJobResponse(jobs)
+}
+
+func (s *ConversionService) buildJobResponse(jobs []models.ConversionJob) []map[string]interface{} {
+	// Sort by start time (newest first)
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].StartTime.After(jobs[j].StartTime)
+	})
+
+	result := make([]map[string]interface{}, 0, len(jobs))
+	for _, job := range jobs {
 		var filename string
 		if job.Filename != nil {
 			filename = *job.Filename
@@ -113,33 +150,39 @@ func (s *ConversionService) GetAllJobs() []map[string]interface{} {
 			endTime = *job.EndTime
 		}
 		jobMap := map[string]interface{}{
-			"id":        job.ID,
-			"url":       job.URL,
-			"format":    job.Format,
-			"status":    job.Status,
-			"startTime": job.StartTime,
-			"endTime":   endTime,
-			"filename":  filename,
-			"error":     errorMsg,
-			"progress":  job.Progress,
-			"size":      s.storageService.GetFormattedFileSize(filename),
-			"canRetry":  job.Status == "failed" && job.DownloadURL != "",
+			"id":         job.ID,
+			"url":        job.URL,
+			"format":     job.Format,
+			"status":     job.Status,
+			"startTime":  job.StartTime,
+			"endTime":    endTime,
+			"filename":   filename,
+			"error":      errorMsg,
+			"progress":   job.Progress,
+			"size":       s.storageService.GetFormattedFileSize(filename),
+			"canRetry":   job.Status == "failed" && job.DownloadURL != "",
+			"videoTitle": job.VideoTitle, // Add this
 		}
-		job.Mu.Unlock()
-		jobs = append(jobs, jobMap)
+		result = append(result, jobMap)
 	}
 
-	return jobs
+	return result
 }
 
-func (s *ConversionService) ProcessConversion(job *models.ConversionJob, downloadURL, format string) {
+func (s *ConversionService) ProcessConversion(job *models.ConversionJob, downloadURL, format, videoTitle string) {
 	job.Mu.Lock()
 	job.Status = "downloading"
 	job.Progress = 0.25
 	database.SaveConversion(job)
 	job.Mu.Unlock()
 
-	tempFile := filepath.Join(s.ongoingDir, job.ID+".mp4")
+	// Use video title for filename (sanitize it)
+	sanitizedTitle := sanitizeFilename(videoTitle)
+	if sanitizedTitle == "" {
+		sanitizedTitle = job.ID
+	}
+
+	tempFile := filepath.Join(s.ongoingDir, sanitizedTitle+".mp4")
 
 	// Download with retries
 	if err := s.downloadWithRetries(downloadURL, tempFile, job); err != nil {
@@ -154,7 +197,7 @@ func (s *ConversionService) ProcessConversion(job *models.ConversionJob, downloa
 	database.SaveConversion(job)
 	job.Mu.Unlock()
 
-	outputFile := filepath.Join(s.completedDir, job.ID+"."+format)
+	outputFile := filepath.Join(s.completedDir, sanitizedTitle+"."+format)
 
 	cmd := utils.BuildFFmpegCommand(tempFile, outputFile, format)
 
@@ -172,7 +215,7 @@ func (s *ConversionService) ProcessConversion(job *models.ConversionJob, downloa
 	job.Progress = 1.0
 	endTime := time.Now()
 	job.EndTime = &endTime
-	filename := job.ID + "." + format
+	filename := sanitizedTitle + "." + format
 	job.Filename = &filename
 	database.SaveConversion(job)
 	job.Mu.Unlock()
@@ -247,9 +290,28 @@ func (s *ConversionService) RetryJob(jobID string) error {
 	job.StartTime = time.Now()
 	job.EndTime = nil
 	database.SaveConversion(job)
+
+	videoTitle := job.VideoTitle
+	if videoTitle == "" {
+		videoTitle = jobID
+	}
 	job.Mu.Unlock()
 
-	go s.ProcessConversion(job, job.DownloadURL, job.Format)
+	go s.ProcessConversion(job, job.DownloadURL, job.Format, videoTitle)
 
 	return nil
+}
+
+func sanitizeFilename(filename string) string {
+	// Remove invalid characters for filenames
+	invalid := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := filename
+	for _, char := range invalid {
+		result = strings.ReplaceAll(result, char, "")
+	}
+	// Limit length
+	if len(result) > 200 {
+		result = result[:200]
+	}
+	return strings.TrimSpace(result)
 }

@@ -28,6 +28,9 @@ function renderConversions() {
             container.innerHTML = jobs.map(job => {
                 const statusClass = `status-${job.status}`;
                 const startTime = new Date(job.startTime).toLocaleString();
+                
+                // Use video title if available, otherwise show "Untitled Video"
+                const videoTitle = job.videoTitle || 'Untitled Video';
 
                 let actions = '';
                 if (job.status === 'completed' && job.filename) {
@@ -58,12 +61,12 @@ function renderConversions() {
                                     <polyline points="7 10 12 15 17 10"/>
                                     <line x1="12" y1="15" x2="12" y2="3"/>
                                 </svg>
-                                ${job.format.toUpperCase()} Conversion
+                                ${videoTitle}
                             </div>
                             <span class="conversion-status ${statusClass}">${job.status}</span>
                         </div>
                         <div class="conversion-url">${job.url}</div>
-                        <div class="conversion-time">Started: ${startTime}</div>
+                        <div class="conversion-time">Format: ${job.format.toUpperCase()} • Started: ${startTime}</div>
                         ${actions}
                     </div>
                 `;

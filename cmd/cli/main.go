@@ -276,18 +276,24 @@ func checkStatus() {
 		fmt.Printf("Status: %s\n", status)
 		fmt.Printf("Started: %s\n", startTime.Format("2006-01-02 15:04:05"))
 
-		if status == "completed" {
-			if filename, ok := job["filename"].(string); ok && filename != "" {
-				size := job["size"].(string)
-				fmt.Printf("File: %s (%s)\n", filename, size)
+		switch status {
+		case "completed":
+			{
+				if filename, ok := job["filename"].(string); ok && filename != "" {
+					size := job["size"].(string)
+					fmt.Printf("File: %s (%s)\n", filename, size)
+				}
+				if endTime := job["endTime"]; endTime != nil {
+					fmt.Printf("Completed: %s\n", endTime.(time.Time).Format("2006-01-02 15:04:05"))
+				}
 			}
-			if endTime := job["endTime"]; endTime != nil {
-				fmt.Printf("Completed: %s\n", endTime.(time.Time).Format("2006-01-02 15:04:05"))
-			}
-		} else if status == "failed" {
-			if errorMsg, ok := job["error"].(string); ok && errorMsg != "" {
-				fmt.Printf("Error: %s\n", errorMsg)
+		case "failed":
+			{
+				if errorMsg, ok := job["error"].(string); ok && errorMsg != "" {
+					fmt.Printf("Error: %s\n", errorMsg)
+				}
 			}
 		}
+
 	}
 }

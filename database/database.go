@@ -19,7 +19,7 @@ func Init(dsn string) error {
 		return err
 	}
 
-	return DB.AutoMigrate(&models.ConversionJob{})
+	return nil
 }
 
 func LoadConversions() ([]models.ConversionJob, error) {

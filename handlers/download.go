@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+
 	"github.com/vicradon/yt-downloader/models"
 	"github.com/vicradon/yt-downloader/services"
 )
@@ -64,10 +65,15 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID := fmt.Sprintf("%s_%d", videoID, time.Now().Unix())
-	job := h.conversionService.CreateJob(jobID, req.URL, req.Format, rapidResp.File)
+	videoTitle := rapidResp.Title
+	if videoTitle == "" {
+		videoTitle = videoID
+	}
 
-	go h.conversionService.ProcessConversion(job, rapidResp.File, req.Format)
+	jobID := fmt.Sprintf("%s_%d", videoID, time.Now().Unix())
+	job := h.conversionService.CreateJob(jobID, req.URL, req.Format, rapidResp.File, videoTitle)
+
+	go h.conversionService.ProcessConversion(job, rapidResp.File, req.Format, videoTitle)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{

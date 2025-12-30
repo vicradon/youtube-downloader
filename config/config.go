@@ -18,7 +18,7 @@ type Config struct {
 	RapidAPIHost string
 	DatabaseURL  string
 	ExecDir      string
-	
+
 	AbsCompletedDir string
 	AbsOngoingDir   string
 }
@@ -32,7 +32,7 @@ func Load() error {
 
 	rapidAPIKey := os.Getenv("RAPIDAPI_KEY")
 	rapidAPIHost := os.Getenv("RAPIDAPI_HOST")
-	databaseURL := os.Getenv("DATABASE_URL")
+	databaseURL := os.Getenv("GOOSE_DBSTRING")
 
 	if rapidAPIKey == "" {
 		log.Fatal("RAPIDAPI_KEY environment variable is required")
@@ -41,7 +41,7 @@ func Load() error {
 		log.Fatal("RAPIDAPI_HOST environment variable is required")
 	}
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		log.Fatal("GOOSE_DBSTRING environment variable is required")
 	}
 
 	execDir := getExecutableDir()

@@ -427,3 +427,17 @@ svg {
   width: 16px;
   height: 16px;
 }
+
+.conversion-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 15px; 
+}
+
+.conversion-time {
+    font-size: 12px;
+    opacity: 0.4;
+    margin-bottom: 8px;
+}
