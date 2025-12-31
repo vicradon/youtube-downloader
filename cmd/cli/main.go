@@ -17,8 +17,10 @@ import (
 )
 
 var (
-	storageService    *services.StorageService
-	conversionService *services.ConversionService
+	storageService         *services.StorageService
+	conversionService      *services.ConversionService
+	directDownloadService  *services.DirectDownloadService
+	youtubeService         *services.YouTubeService
 )
 
 func main() {
@@ -39,6 +41,14 @@ func main() {
 		config.AppConfig.AbsCompletedDir,
 		storageService,
 	)
+	directDownloadService = services.NewDirectDownloadService(
+		config.AppConfig.AbsOngoingDir,
+		config.AppConfig.AbsCompletedDir,
+	)
+	youtubeService = services.NewYouTubeService(
+		config.AppConfig.RapidAPIKey,
+		config.AppConfig.RapidAPIHost,
+	)
 
 	// Load existing conversions
 	if err := conversionService.LoadFromDatabase(); err != nil {
@@ -55,7 +65,8 @@ func main() {
 		fmt.Println("  1. list - List downloaded MP4 files")
 		fmt.Println("  2. convert - Convert an MP4 file")
 		fmt.Println("  3. status - Check conversion status")
-		fmt.Println("  4. quit - Exit")
+		fmt.Println("  4. download - Download a YouTube video")
+		fmt.Println("  5. quit - Exit")
 		fmt.Print("\nEnter command: ")
 
 		input, _ := reader.ReadString('\n')
@@ -68,7 +79,9 @@ func main() {
 			convertFile(reader)
 		case "3", "status":
 			checkStatus()
-		case "4", "quit", "exit":
+		case "4", "download":
+			downloadVideo(reader)
+		case "5", "quit", "exit":
 			fmt.Println("Goodbye!")
 			return
 		default:
@@ -296,4 +309,108 @@ func checkStatus() {
 		}
 
 	}
+}
+
+func downloadVideo(reader *bufio.Reader) {
+	fmt.Println("\n=== Download YouTube Video ===")
+
+	fmt.Print("Enter YouTube URL: ")
+	url, _ := reader.ReadString('\n')
+	url = strings.TrimSpace(url)
+
+	if url == "" {
+		fmt.Println("URL cannot be empty.")
+		return
+	}
+
+	// Extract video ID
+	videoID, err := youtubeService.ExtractVideoID(url)
+	if err != nil {
+		fmt.Printf("Invalid YouTube URL: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\nExtracted video ID: %s\n", videoID)
+
+	// Get download URL from RapidAPI
+	fmt.Println("Getting download URL...")
+	rapidResp, err := youtubeService.GetDownloadURL(videoID)
+	if err != nil {
+		fmt.Printf("Failed to get download URL: %v\n", err)
+		return
+	}
+
+	// Wait for file to be ready
+	fmt.Println("Waiting for file to be ready (this may take up to 20 seconds)...")
+	youtubeService.WaitForFileReady()
+	fmt.Println("File should be ready now")
+
+	// Fetch video title
+	videoTitle := rapidResp.Title
+	if videoTitle == "" {
+		fmt.Println("Fetching video title...")
+		if title, err := youtubeService.GetVideoTitle(videoID); err == nil {
+			videoTitle = title
+		} else {
+			fmt.Printf("Warning: could not fetch video title: %v\n", err)
+			videoTitle = videoID
+		}
+	}
+
+	fmt.Printf("Video title: %s\n", videoTitle)
+
+	// Sanitize filename
+	sanitizedTitle := sanitizeFilename(videoTitle)
+	if sanitizedTitle == "" {
+		sanitizedTitle = videoID
+	}
+	filename := sanitizedTitle + ".mp4"
+
+	// Create download record
+	downloadID := fmt.Sprintf("%s_%d", videoID, time.Now().Unix())
+	download := directDownloadService.CreateDownload(downloadID, url, filename)
+
+	// Process download in background
+	fmt.Printf("\nDownloading %s...\n", filename)
+	go directDownloadService.ProcessDownload(download, rapidResp.File)
+
+	// Wait for download to complete
+	fmt.Println("Waiting for download to complete...")
+	for {
+		time.Sleep(2 * time.Second)
+		download, exists := directDownloadService.GetDownload(downloadID)
+		if !exists {
+			fmt.Println("Error: Download record not found")
+			return
+		}
+
+		if download.Status == "completed" {
+			fmt.Printf("✓ Download completed: %s\n", filename)
+			fmt.Printf("File saved to: %s\n", filepath.Join(config.AppConfig.AbsCompletedDir, filename))
+			return
+		}
+
+		if download.Status == "failed" {
+			errMsg := "Unknown error"
+			if download.Error != nil {
+				errMsg = *download.Error
+			}
+			fmt.Printf("✗ Download failed: %s\n", errMsg)
+			return
+		}
+	}
+}
+
+func sanitizeFilename(filename string) string {
+	// Remove invalid characters for filenames
+	invalid := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := filename
+	for _, char := range invalid {
+		result = strings.ReplaceAll(result, char, "")
+	}
+	// Limit length
+	if len(result) > 200 {
+		result = result[:200]
+	}
+	return strings.TrimSpace(result)
 }

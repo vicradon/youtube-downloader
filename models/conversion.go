@@ -37,3 +37,14 @@ type DownloadRequest struct {
 	Format  string `json:"format"`
 	Convert bool   `json:"convert"`
 }
+
+type DirectDownload struct {
+	ID           string    `gorm:"primaryKey"`
+	URL          string
+	Filename     string
+	DownloadTime time.Time `gorm:"column:download_time"`
+	Status       string
+	Error        *string
+	CreatedAt    time.Time `gorm:"column:created_at"`
+	UpdatedAt    time.Time `gorm:"column:updated_at"`
+}

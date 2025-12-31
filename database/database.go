@@ -31,3 +31,13 @@ func LoadConversions() ([]models.ConversionJob, error) {
 func SaveConversion(job *models.ConversionJob) error {
 	return DB.Save(job).Error
 }
+
+func SaveDirectDownload(download *models.DirectDownload) error {
+	return DB.Save(download).Error
+}
+
+func GetDirectDownload(id string) (*models.DirectDownload, error) {
+	var download models.DirectDownload
+	result := DB.Where("id = ?", id).First(&download)
+	return &download, result.Error
+}
