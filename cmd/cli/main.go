@@ -55,6 +55,12 @@ func main() {
 		log.Printf("Warning: Failed to load conversions: %v", err)
 	}
 
+	// Check for command line arguments
+	if len(os.Args) > 1 {
+		handleCliCommand(os.Args[1:])
+		return
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("=== Vid Downloader CLI ===")
@@ -66,7 +72,8 @@ func main() {
 		fmt.Println("  2. convert - Convert an MP4 file")
 		fmt.Println("  3. status - Check conversion status")
 		fmt.Println("  4. download - Download a YouTube video")
-		fmt.Println("  5. quit - Exit")
+		fmt.Println("  5. extract - Extract a video snippet")
+		fmt.Println("  6. quit - Exit")
 		fmt.Print("\nEnter command: ")
 
 		input, _ := reader.ReadString('\n')
@@ -81,7 +88,9 @@ func main() {
 			checkStatus()
 		case "4", "download":
 			downloadVideo(reader)
-		case "5", "quit", "exit":
+		case "5", "extract":
+			extractSnippetInteractive(reader)
+		case "6", "quit", "exit":
 			fmt.Println("Goodbye!")
 			return
 		default:
@@ -91,48 +100,56 @@ func main() {
 }
 
 func listFiles() {
-	fmt.Println("\n=== Downloaded MP4 Files ===")
-
-	// List files in completed directory
-	completedFiles, err := os.ReadDir(config.AppConfig.AbsCompletedDir)
+	files, err := getAllFiles()
 	if err != nil {
-		fmt.Printf("Error reading completed directory: %v\n", err)
+		fmt.Printf("Error getting files: %v\n", err)
 		return
 	}
 
-	// List files in ongoing directory
-	ongoingFiles, err := os.ReadDir(config.AppConfig.AbsOngoingDir)
-	if err != nil {
-		fmt.Printf("Error reading ongoing directory: %v\n", err)
-		return
-	}
-
-	if len(completedFiles) == 0 && len(ongoingFiles) == 0 {
+	if len(files) == 0 {
 		fmt.Println("No files found.")
 		return
 	}
 
-	if len(ongoingFiles) > 0 {
-		fmt.Println("\nOngoing downloads:")
-		for i, file := range ongoingFiles {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
-				info, _ := file.Info()
-				size := storageService.FormatFileSize(info.Size())
-				fmt.Printf("  %d. %s (%s)\n", i+1, file.Name(), size)
-			}
+	fmt.Println("\n=== Downloaded MP4 Files ===")
+	for i, file := range files {
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+		size := storageService.FormatFileSize(info.Size())
+		fmt.Printf("  %d. %s (%s)\n", i+1, filepath.Base(file), size)
+	}
+}
+
+func getAllFiles() ([]string, error) {
+	var allFiles []string
+
+	// List files in ongoing directory
+	ongoingFiles, err := os.ReadDir(config.AppConfig.AbsOngoingDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading ongoing directory: %v", err)
+	}
+
+	for _, file := range ongoingFiles {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
+			allFiles = append(allFiles, filepath.Join(config.AppConfig.AbsOngoingDir, file.Name()))
 		}
 	}
 
-	if len(completedFiles) > 0 {
-		fmt.Println("\nCompleted files:")
-		for i, file := range completedFiles {
-			if !file.IsDir() {
-				info, _ := file.Info()
-				size := storageService.FormatFileSize(info.Size())
-				fmt.Printf("  %d. %s (%s)\n", i+1, file.Name(), size)
-			}
+	// List files in completed directory
+	completedFiles, err := os.ReadDir(config.AppConfig.AbsCompletedDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading completed directory: %v", err)
+	}
+
+	for _, file := range completedFiles {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".mp4") {
+			allFiles = append(allFiles, filepath.Join(config.AppConfig.AbsCompletedDir, file.Name()))
 		}
 	}
+
+	return allFiles, nil
 }
 
 func convertFile(reader *bufio.Reader) {
@@ -413,4 +430,149 @@ func sanitizeFilename(filename string) string {
 		result = result[:200]
 	}
 	return strings.TrimSpace(result)
+}
+
+func handleCliCommand(args []string) {
+	command := args[0]
+
+	switch command {
+	case "list":
+		listFiles()
+	case "extract":
+		// Expecting: extract <target> -start <start> -end <end>
+		if len(args) < 6 {
+			fmt.Println("Usage: extract <index|path> -start <start> -end <end>")
+			return
+		}
+		
+		target := args[1]
+		var start, end string
+
+		for i := 2; i < len(args); i++ {
+			if args[i] == "-start" && i+1 < len(args) {
+				start = args[i+1]
+			}
+			if args[i] == "-end" && i+1 < len(args) {
+				end = args[i+1]
+			}
+		}
+
+		if start == "" || end == "" {
+			fmt.Println("Error: -start and -end arguments are required")
+			return
+		}
+
+		extractSnippet(target, start, end)
+
+	default:
+		fmt.Printf("Unknown command: %s\n", command)
+	}
+}
+
+func extractSnippet(target, start, end string) {
+	// Try to parse target as index
+	var inputPath string
+	index, err := fmt.Sscanf(target, "%d", new(int))
+	
+	if index > 0 && err == nil {
+		// Target is an index
+		files, err := getAllFiles()
+		if err != nil {
+			fmt.Printf("Error getting files: %v\n", err)
+			return
+		}
+
+		var fileIndex int
+		fmt.Sscanf(target, "%d", &fileIndex)
+
+		if fileIndex < 1 || fileIndex > len(files) {
+			fmt.Printf("Invalid file index: %d\n", fileIndex)
+			return
+		}
+		inputPath = files[fileIndex-1]
+	} else {
+		// Target is a path
+		inputPath = target
+		if !filepath.IsAbs(inputPath) {
+			cwd, _ := os.Getwd()
+			inputPath = filepath.Join(cwd, inputPath)
+		}
+	}
+
+	// Verify file exists
+	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
+		fmt.Printf("File not found: %s\n", inputPath)
+		return
+	}
+
+	outputFilename := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath)) + "_snippet.mp4"
+	outputPath := filepath.Join(config.AppConfig.AbsCompletedDir, outputFilename)
+
+	fmt.Printf("Extracting snippet from %s...\n", filepath.Base(inputPath))
+	fmt.Printf("Start: %s, End: %s\n", start, end)
+	fmt.Printf("Output: %s\n", outputPath)
+
+	cmd := utils.BuildCutCommand(inputPath, outputPath, start, end)
+	
+	// Print the command being executed for debugging/transparency
+	// fmt.Println("Running:", cmd.String())
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("Error extracting snippet: %v\nOutput: %s\n", err, string(output))
+	} else {
+		fmt.Printf("Snippet extracted successfully: %s\n", outputPath)
+	}
+}
+
+func extractSnippetInteractive(reader *bufio.Reader) {
+	fmt.Println("\n=== Extract Video Snippet ===")
+
+	files, err := getAllFiles()
+	if err != nil {
+		fmt.Printf("Error getting files: %v\n", err)
+		return
+	}
+
+	if len(files) == 0 {
+		fmt.Println("No files available.")
+		return
+	}
+
+	fmt.Println("\nAvailable files:")
+	for i, file := range files {
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+		size := storageService.FormatFileSize(info.Size())
+		fmt.Printf("  %d. %s (%s)\n", i+1, filepath.Base(file), size)
+	}
+
+	fmt.Print("\nSelect file number: ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	var fileIndex int
+	_, err = fmt.Sscanf(input, "%d", &fileIndex)
+	if err != nil || fileIndex < 1 || fileIndex > len(files) {
+		fmt.Println("Invalid selection.")
+		return
+	}
+
+	selectedFile := files[fileIndex-1]
+
+	fmt.Print("Enter start time (e.g., 00:00:10): ")
+	start, _ := reader.ReadString('\n')
+	start = strings.TrimSpace(start)
+
+	fmt.Print("Enter end time (e.g., 00:00:20): ")
+	end, _ := reader.ReadString('\n')
+	end = strings.TrimSpace(end)
+
+	if start == "" || end == "" {
+		fmt.Println("Start and end times are required.")
+		return
+	}
+
+	extractSnippet(selectedFile, start, end)
 }
